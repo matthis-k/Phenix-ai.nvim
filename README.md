@@ -12,7 +12,7 @@ This repository owns the Neovim-specific Lua client, UI, interaction model, prod
 
 `phenix-nvim` consumes this package. Phenix AI core does not depend on this repository.
 
-The flake follows `github:matthis-k/phenix-ai`. A committed lock file should be added when release/update policy for this standalone client is finalized; until then, consumers may pin the flake input through their own lock graph.
+The flake follows `github:matthis-k/phenix-ai`, and `flake.lock` pins the exact Phenix AI and transitive Nix dependency graph used by the standalone client. Normal validation does not update that lock implicitly.
 
 ## Non-Nix installs
 
