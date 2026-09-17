@@ -155,11 +155,14 @@ local function open_external_auth(result)
     util.notify(result.instructions, vim.log.levels.INFO)
   end
   if type(vim.ui.open) == "function" then
-    local ok, open_error = pcall(vim.ui.open, uri)
-    if ok then
+    local call_ok, handle, open_error = pcall(vim.ui.open, uri)
+    if call_ok and open_error == nil then
       return true
     end
-    util.notify(tostring(open_error), vim.log.levels.WARN)
+    local failure = call_ok and open_error or handle
+    if failure ~= nil then
+      util.notify(tostring(failure), vim.log.levels.WARN)
+    end
   end
   util.notify("Open this URL to finish Phenix authentication: " .. uri, vim.log.levels.INFO)
   return true
