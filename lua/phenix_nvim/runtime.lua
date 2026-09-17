@@ -463,6 +463,37 @@ local function active_session_request(method, callback, ...)
   end)
 end
 
+local function client_request(method, callback, ...)
+  if not require_ready(callback) then
+    return
+  end
+  local callable = state.client[method]
+  if type(callable) ~= "function" then
+    util.safe_call(callback, nil, { message = "Phenix client does not support " .. method })
+    return
+  end
+  local ok, request = pcall(callable, state.client, ...)
+  if not ok then
+    util.safe_call(callback, nil, { message = tostring(request) })
+    return
+  end
+  M.track(request, function(result, error)
+    if error == nil then
+      refresh_active_context()
+      emit("status", M.status())
+    end
+    util.safe_call(callback, result, error)
+  end)
+end
+
+function M.list_authentication_methods(callback)
+  client_request("authentication_methods", callback)
+end
+
+function M.authenticate(method_id, callback)
+  client_request("authenticate", callback, method_id)
+end
+
 function M.list_models(callback)
   active_session_request("models", callback)
 end
