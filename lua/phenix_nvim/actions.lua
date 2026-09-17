@@ -146,6 +146,69 @@ local function choice_label(item, selected)
   return marker .. name
 end
 
+local function open_external_auth(result)
+  local uri = result and result.uri
+  if type(uri) ~= "string" or uri == "" then
+    return false
+  end
+  if result.instructions ~= nil and result.instructions ~= "" then
+    util.notify(result.instructions, vim.log.levels.INFO)
+  end
+  if type(vim.ui.open) == "function" then
+    local ok, open_error = pcall(vim.ui.open, uri)
+    if ok then
+      return true
+    end
+    util.notify(tostring(open_error), vim.log.levels.WARN)
+  end
+  util.notify("Open this URL to finish Phenix authentication: " .. uri, vim.log.levels.INFO)
+  return true
+end
+
+function M.authenticate()
+  if type(runtime.list_authentication_methods) ~= "function" or type(runtime.authenticate) ~= "function" then
+    util.notify("The installed Phenix runtime does not expose application authentication yet", vim.log.levels.WARN)
+    return
+  end
+  runtime.list_authentication_methods(function(result, error)
+    if error ~= nil then
+      util.notify(vim.inspect(error), vim.log.levels.ERROR)
+      return
+    end
+    local methods = result and result.methods or {}
+    if #methods == 0 then
+      util.notify("No Phenix authentication methods are available", vim.log.levels.WARN)
+      return
+    end
+    vim.ui.select(methods, {
+      prompt = "Phenix authentication",
+      format_item = function(method)
+        local label = method.name or method.id or "unknown"
+        if method.description ~= nil and method.description ~= "" then
+          return label .. "  ·  " .. method.description
+        end
+        return label
+      end,
+    }, function(method)
+      if method == nil then
+        return
+      end
+      runtime.authenticate(method.id, function(auth_result, auth_error)
+        if auth_error ~= nil then
+          util.notify(vim.inspect(auth_error), vim.log.levels.ERROR)
+          return
+        end
+        local kind = auth_result and string.lower(tostring(auth_result.kind or "")) or ""
+        if kind == "external" then
+          open_external_auth(auth_result)
+          return
+        end
+        util.notify("Phenix authentication completed", vim.log.levels.INFO)
+      end)
+    end)
+  end)
+end
+
 function M.choose_model()
   runtime.list_models(function(result, error)
     if error ~= nil then
