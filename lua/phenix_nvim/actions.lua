@@ -168,6 +168,45 @@ local function open_external_auth(result)
   return true
 end
 
+local auth_generation = 0
+local AUTH_POLL_INTERVAL_MS = 1000
+local AUTH_POLL_ATTEMPTS = 600
+
+local function authentication_kind(result)
+  return result and string.lower(tostring(result.kind or "")) or ""
+end
+
+local function poll_authentication(method_id, generation, attempt)
+  if generation ~= auth_generation then
+    return
+  end
+  runtime.authenticate(method_id, function(result, error)
+    if generation ~= auth_generation then
+      return
+    end
+    if error ~= nil then
+      util.notify(vim.inspect(error), vim.log.levels.ERROR)
+      return
+    end
+    local kind = authentication_kind(result)
+    if kind == "authenticated" then
+      util.notify("Phenix authentication completed", vim.log.levels.INFO)
+      return
+    end
+    if kind ~= "external" then
+      util.notify("Phenix returned an unknown authentication state", vim.log.levels.ERROR)
+      return
+    end
+    if attempt >= AUTH_POLL_ATTEMPTS then
+      util.notify("Phenix authentication timed out", vim.log.levels.ERROR)
+      return
+    end
+    vim.defer_fn(function()
+      poll_authentication(method_id, generation, attempt + 1)
+    end, AUTH_POLL_INTERVAL_MS)
+  end)
+end
+
 function M.authenticate()
   if type(runtime.list_authentication_methods) ~= "function" or type(runtime.authenticate) ~= "function" then
     util.notify("The installed Phenix runtime does not expose application authentication yet", vim.log.levels.WARN)
@@ -196,17 +235,32 @@ function M.authenticate()
       if method == nil then
         return
       end
+      auth_generation = auth_generation + 1
+      local generation = auth_generation
       runtime.authenticate(method.id, function(auth_result, auth_error)
+        if generation ~= auth_generation then
+          return
+        end
         if auth_error ~= nil then
           util.notify(vim.inspect(auth_error), vim.log.levels.ERROR)
           return
         end
-        local kind = auth_result and string.lower(tostring(auth_result.kind or "")) or ""
-        if kind == "external" then
-          open_external_auth(auth_result)
+        local kind = authentication_kind(auth_result)
+        if kind == "authenticated" then
+          util.notify("Phenix authentication completed", vim.log.levels.INFO)
           return
         end
-        util.notify("Phenix authentication completed", vim.log.levels.INFO)
+        if kind ~= "external" then
+          util.notify("Phenix returned an unknown authentication state", vim.log.levels.ERROR)
+          return
+        end
+        if not open_external_auth(auth_result) then
+          util.notify("Phenix authentication did not provide a valid authorization URL", vim.log.levels.ERROR)
+          return
+        end
+        vim.defer_fn(function()
+          poll_authentication(method.id, generation, 1)
+        end, AUTH_POLL_INTERVAL_MS)
       end)
     end)
   end)
