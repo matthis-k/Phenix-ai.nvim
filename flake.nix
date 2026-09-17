@@ -113,12 +113,18 @@
                   -c ${pkgs.lib.escapeShellArg "lua assert(loadfile('${source}/tests/provider_acceptance.lua'))"} \
                   -c qa
 
-                for test_file in headless image interaction; do
-                  nvim --headless -u NONE \
-                    --cmd ${pkgs.lib.escapeShellArg "set rtp^=${plugin}"} \
-                    -c "lua dofile('${source}/tests/'$test_file'.lua')" \
-                    -c qa
-                done
+                nvim --headless -u NONE \
+                  --cmd ${pkgs.lib.escapeShellArg "set rtp^=${plugin}"} \
+                  -c ${pkgs.lib.escapeShellArg "lua dofile('${source}/tests/headless.lua')"} \
+                  -c qa
+                nvim --headless -u NONE \
+                  --cmd ${pkgs.lib.escapeShellArg "set rtp^=${plugin}"} \
+                  -c ${pkgs.lib.escapeShellArg "lua dofile('${source}/tests/image.lua')"} \
+                  -c qa
+                nvim --headless -u NONE \
+                  --cmd ${pkgs.lib.escapeShellArg "set rtp^=${plugin}"} \
+                  -c ${pkgs.lib.escapeShellArg "lua dofile('${source}/tests/interaction.lua')"} \
+                  -c qa
 
                 export PHENIX_STATE_DB="$TMPDIR/phenix-ai-nvim-acp.sqlite"
                 export PHENIX_SESSION_ID_FILE="$TMPDIR/phenix-ai-nvim-session-id"
