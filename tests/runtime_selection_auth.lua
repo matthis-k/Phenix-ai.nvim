@@ -43,13 +43,17 @@ local model = nil
 local router = nil
 for _, item in ipairs(selections.available) do
   local kind = presentation_kind(item)
-  if kind == "model" and model == nil then
+  if kind == "model"
+    and type(item.description) == "string"
+    and item.description:find("openai%-codex", 1, false)
+    and model == nil
+  then
     model = item
   elseif kind == "router" and router == nil then
     router = item
   end
 end
-assert(model ~= nil, "packaged runtime must expose at least one fixed model route")
+assert(model ~= nil, "packaged runtime must expose an OpenAI Codex fixed model route")
 assert(router ~= nil, "packaged runtime must expose at least one router")
 
 local selected = nil
@@ -111,6 +115,19 @@ local auth_kind = string.lower(tostring(auth.kind or ""))
 assert(auth_kind == "external" or auth_kind == "authenticated", "unexpected authentication state: " .. vim.inspect(auth))
 if auth_kind == "external" then
   assert(type(auth.uri) == "string" and auth.uri:match("^https://"), "OAuth did not return an HTTPS authorization URI")
+
+  local polled = nil
+  local poll_error = nil
+  runtime.authenticate(codex.id, function(result, err)
+    polled = result
+    poll_error = err
+  end)
+  assert(vim.wait(10000, function()
+    return polled ~= nil or poll_error ~= nil
+  end, 10), "authentication poll timed out")
+  assert(poll_error == nil, vim.inspect(poll_error))
+  assert(string.lower(tostring(polled.kind or "")) == "external", "pending OAuth flow was not preserved")
+  assert(polled.uri == auth.uri, "authentication polling started a different OAuth flow")
 end
 
 frontend.disconnect()
