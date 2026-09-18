@@ -99,7 +99,7 @@ local function refresh_active_context()
     emit("status", M.status())
   end
   local features = state.client and state.client:features() or {}
-  if features.selection or features.routing then
+  if features.selection then
     local ok, request = pcall(session.selections, session)
     if ok then
       M.track(request, ignore_stale)
