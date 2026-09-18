@@ -136,14 +136,26 @@ function M.choose_session()
   sessions.choose()
 end
 
+local function presentation_kind(item)
+  local presentation = item and item.presentation
+  if type(presentation) == "table" then
+    return string.lower(tostring(presentation.kind or ""))
+  end
+  return string.lower(tostring(presentation or ""))
+end
+
 local function choice_label(item, selected)
   local name = item.name or item.id or "unknown"
   local id = item.id
   local marker = id ~= nil and id == selected and "✓ " or "  "
+  local kind = presentation_kind(item)
+  local glyph = kind == "router" and "󰒍" or "󰧑"
+  local tag = kind == "router" and "router" or "model"
+  local label = marker .. glyph .. " [" .. tag .. "] " .. name
   if id ~= nil and id ~= name then
-    return marker .. name .. "  ·  " .. id
+    return label .. "  ·  " .. id
   end
-  return marker .. name
+  return label
 end
 
 local function open_external_auth(result)
@@ -266,19 +278,19 @@ function M.authenticate()
   end)
 end
 
-function M.choose_model()
-  runtime.list_models(function(result, error)
+function M.choose_selection()
+  runtime.list_selections(function(result, error)
     if error ~= nil then
       util.notify(vim.inspect(error), vim.log.levels.ERROR)
       return
     end
     local available = result and result.available or {}
     if #available == 0 then
-      util.notify("No models are available for this session", vim.log.levels.WARN)
+      util.notify("No Phenix routing selections are available for this session", vim.log.levels.WARN)
       return
     end
     vim.ui.select(available, {
-      prompt = "Phenix model",
+      prompt = "Phenix model / routing",
       format_item = function(item)
         return choice_label(item, result.selected)
       end,
@@ -286,36 +298,7 @@ function M.choose_model()
       if item == nil then
         return
       end
-      runtime.select_model(item.id, function(_, select_error)
-        if select_error ~= nil then
-          util.notify(vim.inspect(select_error), vim.log.levels.ERROR)
-        end
-      end)
-    end)
-  end)
-end
-
-function M.choose_routing_profile()
-  runtime.list_routing_profiles(function(result, error)
-    if error ~= nil then
-      util.notify(vim.inspect(error), vim.log.levels.ERROR)
-      return
-    end
-    local available = result and result.available or {}
-    if #available == 0 then
-      util.notify("No routing profiles are available for this session", vim.log.levels.WARN)
-      return
-    end
-    vim.ui.select(available, {
-      prompt = "Phenix routing profile",
-      format_item = function(item)
-        return choice_label(item, result.selected)
-      end,
-    }, function(item)
-      if item == nil then
-        return
-      end
-      runtime.select_routing_profile(item.id, function(_, select_error)
+      runtime.select(item.id, function(_, select_error)
         if select_error ~= nil then
           util.notify(vim.inspect(select_error), vim.log.levels.ERROR)
         end
