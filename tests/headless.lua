@@ -207,6 +207,26 @@ local sidebar = require("phenix_nvim.sidebar")
 sidebar.open()
 local transcript_buffer, compose_buffer = sidebar.buffers()
 assert(transcript_buffer ~= compose_buffer, "transcript and compose must use separate buffers")
+assert(vim.bo[compose_buffer].buftype == "acwrite", "compose buffer must support custom :write sending")
+
+local normal_enter = nil
+for _, mapping in ipairs(vim.api.nvim_buf_get_keymap(compose_buffer, "n")) do
+  if mapping.lhs == "<CR>" then
+    normal_enter = mapping
+    break
+  end
+end
+assert(normal_enter ~= nil, "compose buffer must map normal-mode Enter to send")
+
+for _, mapping in ipairs(vim.api.nvim_buf_get_keymap(compose_buffer, "i")) do
+  assert(mapping.lhs ~= "<CR>", "compose buffer must not map insert-mode Enter")
+end
+
+local write_handlers = vim.api.nvim_get_autocmds({
+  event = "BufWriteCmd",
+  buffer = compose_buffer,
+})
+assert(#write_handlers == 1, "compose buffer must send through exactly one BufWriteCmd handler")
 
 local transcript_view = require("phenix_nvim.transcript.buffer")
 local transcript_win = vim.fn.bufwinid(transcript_buffer)
