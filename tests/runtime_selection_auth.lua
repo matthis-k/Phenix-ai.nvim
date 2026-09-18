@@ -1,0 +1,116 @@
+local frontend = require("phenix_nvim")
+local runtime = require("phenix_nvim.runtime")
+
+frontend.setup({ auto_connect = false })
+
+local connected = false
+local connection_error = nil
+frontend.connect(function(_, err)
+  connection_error = err
+  connected = true
+end)
+assert(vim.wait(10000, function()
+  return connected
+end, 10), "packaged Phenix connection timed out")
+assert(connection_error == nil, vim.inspect(connection_error))
+
+frontend.new_session()
+assert(vim.wait(10000, function()
+  return runtime.active_session() ~= nil
+end, 10), "packaged Phenix session creation timed out")
+
+local selections = nil
+local selection_error = nil
+runtime.list_selections(function(result, err)
+  selections = result
+  selection_error = err
+end)
+assert(vim.wait(10000, function()
+  return selections ~= nil or selection_error ~= nil
+end, 10), "routing selection discovery timed out")
+assert(selection_error == nil, vim.inspect(selection_error))
+assert(type(selections.available) == "table" and #selections.available > 0, "no routing selections exposed")
+
+local function presentation_kind(item)
+  local presentation = item.presentation
+  if type(presentation) == "table" then
+    return string.lower(tostring(presentation.kind or ""))
+  end
+  return string.lower(tostring(presentation or ""))
+end
+
+local model = nil
+local router = nil
+for _, item in ipairs(selections.available) do
+  local kind = presentation_kind(item)
+  if kind == "model" and model == nil then
+    model = item
+  elseif kind == "router" and router == nil then
+    router = item
+  end
+end
+assert(model ~= nil, "packaged runtime must expose at least one fixed model route")
+assert(router ~= nil, "packaged runtime must expose at least one router")
+
+local selected = nil
+local select_error = nil
+runtime.select(model.id, function(result, err)
+  selected = result
+  select_error = err
+end)
+assert(vim.wait(10000, function()
+  return selected ~= nil or select_error ~= nil
+end, 10), "routing selection update timed out")
+assert(select_error == nil, vim.inspect(select_error))
+assert(selected.selected == model.id, "selection response did not retain selected fixed route")
+
+local refreshed = nil
+local refresh_error = nil
+runtime.list_selections(function(result, err)
+  refreshed = result
+  refresh_error = err
+end)
+assert(vim.wait(10000, function()
+  return refreshed ~= nil or refresh_error ~= nil
+end, 10), "routing selection refresh timed out")
+assert(refresh_error == nil, vim.inspect(refresh_error))
+assert(refreshed.selected == model.id, "session routing selection was not persisted")
+
+local methods = nil
+local methods_error = nil
+runtime.list_authentication_methods(function(result, err)
+  methods = result
+  methods_error = err
+end)
+assert(vim.wait(10000, function()
+  return methods ~= nil or methods_error ~= nil
+end, 10), "authentication discovery timed out")
+assert(methods_error == nil, vim.inspect(methods_error))
+assert(type(methods.methods) == "table", "authentication methods result is malformed")
+
+local codex = nil
+for _, method in ipairs(methods.methods) do
+  if method.name == "OpenAI Codex (ChatGPT OAuth)" then
+    codex = method
+    break
+  end
+end
+assert(codex ~= nil, "packaged runtime did not expose OpenAI Codex OAuth")
+
+local auth = nil
+local auth_error = nil
+runtime.authenticate(codex.id, function(result, err)
+  auth = result
+  auth_error = err
+end)
+assert(vim.wait(10000, function()
+  return auth ~= nil or auth_error ~= nil
+end, 10), "authentication start timed out")
+assert(auth_error == nil, vim.inspect(auth_error))
+local auth_kind = string.lower(tostring(auth.kind or ""))
+assert(auth_kind == "external" or auth_kind == "authenticated", "unexpected authentication state: " .. vim.inspect(auth))
+if auth_kind == "external" then
+  assert(type(auth.uri) == "string" and auth.uri:match("^https://"), "OAuth did not return an HTTPS authorization URI")
+end
+
+frontend.disconnect()
