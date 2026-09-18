@@ -3,6 +3,7 @@ assert(native.interface_id == "phenix.application@1")
 
 local frontend = require("phenix_nvim")
 frontend.setup({ auto_connect = false })
+vim.cmd.runtime("plugin/phenix.lua")
 assert(type(frontend.reference) == "function")
 assert(type(frontend.reference_at) == "function")
 assert(type(frontend.reference_picker) == "function")
