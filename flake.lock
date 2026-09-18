@@ -134,17 +134,18 @@
         "phenix-stitch": "phenix-stitch"
       },
       "locked": {
-        "lastModified": 1789666774,
-        "narHash": "sha256-tG4yziutq8ntinTCsy33TGcjB4cTiIAxAvrxFCwjpI4=",
+        "lastModified": 1789693900,
+        "narHash": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
         "owner": "matthis-k",
         "repo": "phenix-ai",
-        "rev": "8dc9452e532ca5a543b4ddc44b38b7e028b74aa3",
+        "rev": "f7f3c253984d8c0bd0b884a6a1ad2b92040dc024",
         "type": "github"
       },
       "original": {
         "owner": "matthis-k",
         "repo": "phenix-ai",
-        "type": "github"
+        "type": "github",
+        "ref": "feat/unified-route-selection"
       }
     },
     "phenix-flake-ci": {
