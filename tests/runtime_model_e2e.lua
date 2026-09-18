@@ -1,5 +1,6 @@
 local frontend = require("phenix_nvim")
 local runtime = require("phenix_nvim.runtime")
+local sidebar = require("phenix_nvim.sidebar")
 local transcript = require("phenix_nvim.transcript.controller")
 local transcript_buffer = require("phenix_nvim.transcript.buffer")
 
@@ -16,6 +17,7 @@ frontend.setup({
     PHENIX_FIXTURE_RESPONSE = expected,
   },
 })
+vim.cmd.runtime("plugin/phenix.lua")
 
 local connected = false
 local connection_error = nil
@@ -66,20 +68,6 @@ end, 10), "deterministic fixture selection timed out")
 assert(select_error == nil, vim.inspect(select_error))
 assert(selected.selected == fixture.id, "deterministic fixture route was not selected")
 
-local prompt_result = nil
-local prompt_error = nil
-runtime.prompt(session_id, {
-  { kind = "text", text = marker },
-}, function(result, err)
-  prompt_result = result
-  prompt_error = err
-end)
-assert(vim.wait(10000, function()
-  return prompt_result ~= nil or prompt_error ~= nil
-end, 10), "deterministic model prompt timed out")
-assert(prompt_error == nil, vim.inspect(prompt_error))
-assert(type(prompt_result.execution_id) == "string" and prompt_result.execution_id ~= "", "prompt did not return an execution id")
-
 local function normalized_kind(value)
   if type(value) == "table" then
     value = value.kind or value.tag
@@ -87,9 +75,9 @@ local function normalized_kind(value)
   return string.lower(tostring(value or "")):gsub("_", "")
 end
 
-local function text_content(content)
+local function text_content(content_items)
   local parts = {}
-  for _, item in ipairs(content or {}) do
+  for _, item in ipairs(content_items or {}) do
     if normalized_kind(item.kind) == "text" and type(item.text) == "string" then
       table.insert(parts, item.text)
     end
@@ -97,54 +85,102 @@ local function text_content(content)
   return table.concat(parts)
 end
 
-local projection = assert(runtime.session_state().sessions[session_id], "live session projection is missing")
-local saw_user = false
-local saw_delta = false
-local saw_assistant = false
-local saw_running = false
-local saw_completed = false
-for _, entry in ipairs(projection.updates or {}) do
-  local change = entry.update or {}
-  local change_kind = normalized_kind(change.kind)
-  if change_kind == "message" and change.message ~= nil then
-    local role = normalized_kind(change.message.role)
-    if role == "user" and text_content(change.message.content) == marker then
-      saw_user = true
-    elseif role == "assistant" and text_content(change.message.content) == expected then
-      saw_assistant = true
-    end
-  elseif change_kind == "textdelta"
-      and change.execution_id == prompt_result.execution_id
-      and change.text == expected then
-    saw_delta = true
-  elseif change_kind == "execution"
-      and change.execution_id == prompt_result.execution_id
-      and change.update ~= nil
-      and normalized_kind(change.update.kind) == "state" then
-    local state = normalized_kind(change.update.state)
-    if state == "running" then
-      saw_running = true
-    elseif state == "completed" then
-      saw_completed = true
+local function find_completed_turn(user_text, excluded)
+  local projection = runtime.session_state().sessions[session_id]
+  if projection == nil then
+    return nil
+  end
+
+  local saw_user = false
+  local saw_assistant = false
+  local candidates = {}
+  local states = {}
+
+  for _, entry in ipairs(projection.updates or {}) do
+    local change = entry.update or {}
+    local change_kind = normalized_kind(change.kind)
+    if change_kind == "message" and change.message ~= nil then
+      local role = normalized_kind(change.message.role)
+      if role == "user" and text_content(change.message.content) == user_text then
+        saw_user = true
+      elseif role == "assistant" and text_content(change.message.content) == expected then
+        saw_assistant = true
+      end
+    elseif change_kind == "textdelta" and change.text == expected then
+      local execution_id = change.execution_id
+      if execution_id ~= nil and not excluded[execution_id] then
+        candidates[execution_id] = true
+      end
+    elseif change_kind == "execution"
+        and change.execution_id ~= nil
+        and change.update ~= nil
+        and normalized_kind(change.update.kind) == "state" then
+      local execution_id = change.execution_id
+      states[execution_id] = states[execution_id] or {}
+      states[execution_id][normalized_kind(change.update.state)] = true
     end
   end
+
+  if not saw_user or not saw_assistant then
+    return nil
+  end
+
+  for execution_id in pairs(candidates) do
+    local execution_states = states[execution_id] or {}
+    if execution_states.running and execution_states.completed then
+      return execution_id
+    end
+  end
+  return nil
 end
 
-assert(saw_user, "user prompt did not survive the application/session projection")
-assert(saw_delta, "deterministic provider output did not survive as a text delta")
-assert(saw_assistant, "deterministic provider output did not survive as the final assistant message")
-assert(saw_running, "execution never entered the running state")
-assert(saw_completed, "execution never reached the completed state")
+local function wait_for_completed_turn(user_text, excluded)
+  local execution_id = nil
+  assert(vim.wait(10000, function()
+    execution_id = find_completed_turn(user_text, excluded)
+    return execution_id ~= nil
+  end, 10), "deterministic model turn timed out for " .. user_text)
+  return assert(execution_id)
+end
 
-transcript.refresh()
-local assistant_id = "session:" .. session_id .. ":execution:" .. prompt_result.execution_id .. ":assistant"
-local node = assert(transcript.projection().nodes[assistant_id], "live transcript did not create the assistant node")
-assert(node.text == expected, "live transcript changed the deterministic assistant response")
-assert(node.final == true, "live transcript did not finalize the assistant node")
+local function compose_text(text)
+  local compose_win = sidebar.focus_compose()
+  local _, compose_buffer = sidebar.buffers()
+  vim.api.nvim_set_current_win(compose_win)
+  vim.api.nvim_buf_set_lines(compose_buffer, 0, -1, false, { text })
+  return compose_buffer
+end
 
-local buffer = transcript_buffer.ensure()
-local rendered = table.concat(vim.api.nvim_buf_get_lines(buffer, 0, -1, false), "\n")
-assert(rendered:find(expected, 1, true) ~= nil, "rendered transcript does not contain the deterministic assistant response")
+local function assert_compose_cleared(compose_buffer)
+  assert(
+    vim.deep_equal(vim.api.nvim_buf_get_lines(compose_buffer, 0, -1, false), { "" }),
+    "successful send did not clear the compose buffer"
+  )
+  assert(not vim.bo[compose_buffer].modified, "successful send left the compose buffer modified")
+end
+
+local function assert_transcript(execution_id)
+  transcript.refresh()
+  local assistant_id = "session:" .. session_id .. ":execution:" .. execution_id .. ":assistant"
+  local node = assert(transcript.projection().nodes[assistant_id], "transcript did not create the assistant node")
+  assert(node.text == expected, "transcript changed the deterministic assistant response")
+  assert(node.final == true, "transcript did not finalize the assistant node")
+
+  local buffer = transcript_buffer.ensure()
+  local rendered = table.concat(vim.api.nvim_buf_get_lines(buffer, 0, -1, false), "\n")
+  assert(rendered:find(expected, 1, true) ~= nil, "rendered transcript does not contain the deterministic response")
+  return assistant_id, buffer
+end
+
+local excluded = {}
+
+local command_text = marker .. " command"
+local compose_buffer = compose_text(command_text)
+vim.cmd("PhenixSend")
+local first_execution_id = wait_for_completed_turn(command_text, excluded)
+excluded[first_execution_id] = true
+assert_compose_cleared(compose_buffer)
+local first_assistant_id, rendered_buffer = assert_transcript(first_execution_id)
 
 frontend.disconnect()
 
@@ -187,66 +223,47 @@ assert(recovered_assistant, "restart lost the deterministic assistant message")
 
 transcript.refresh()
 local recovered_node = assert(
-  transcript.projection().nodes[assistant_id],
+  transcript.projection().nodes[first_assistant_id],
   "restart did not reconstruct the assistant transcript node"
 )
 assert(recovered_node.text == expected, "restart changed the deterministic assistant response")
 assert(recovered_node.final == true, "restart reconstructed the assistant node as unfinished")
-local recovered_rendered = table.concat(vim.api.nvim_buf_get_lines(buffer, 0, -1, false), "\n")
+local recovered_rendered = table.concat(vim.api.nvim_buf_get_lines(rendered_buffer, 0, -1, false), "\n")
 assert(
   recovered_rendered:find(expected, 1, true) ~= nil,
   "restart did not render the recovered deterministic assistant response"
 )
 
-local second_result = nil
-local second_error = nil
-runtime.prompt(session_id, {
-  { kind = "text", text = marker .. " after restart" },
-}, function(result, err)
-  second_result = result
-  second_error = err
-end)
-assert(vim.wait(10000, function()
-  return second_result ~= nil or second_error ~= nil
-end, 10), "post-restart deterministic prompt timed out")
-assert(second_error == nil, vim.inspect(second_error))
-assert(
-  second_result.execution_id ~= prompt_result.execution_id,
-  "post-restart prompt reused the previous durable execution id"
-)
+local write_text = marker .. " write"
+compose_buffer = compose_text(write_text)
+vim.cmd("write")
+local second_execution_id = wait_for_completed_turn(write_text, excluded)
+excluded[second_execution_id] = true
+assert(second_execution_id ~= first_execution_id, "write send reused the previous durable execution id")
+assert_compose_cleared(compose_buffer)
+assert_transcript(second_execution_id)
 
-local post_restart_projection = assert(
-  runtime.session_state().sessions[session_id],
-  "post-restart prompt lost the session projection"
-)
-local second_delta = false
-local second_completed = false
-for _, entry in ipairs(post_restart_projection.updates or {}) do
-  local change = entry.update or {}
-  if normalized_kind(change.kind) == "textdelta"
-      and change.execution_id == second_result.execution_id
-      and change.text == expected then
-    second_delta = true
-  elseif normalized_kind(change.kind) == "execution"
-      and change.execution_id == second_result.execution_id
-      and change.update ~= nil
-      and normalized_kind(change.update.kind) == "state"
-      and normalized_kind(change.update.state) == "completed" then
-    second_completed = true
+local enter_text = marker .. " normal enter"
+compose_buffer = compose_text(enter_text)
+local enter_mapping = nil
+for _, mapping in ipairs(vim.api.nvim_buf_get_keymap(compose_buffer, "n")) do
+  if mapping.lhs == "<CR>" then
+    enter_mapping = mapping
+    break
   end
 end
-assert(second_delta, "post-restart model output did not reach the durable transcript")
-assert(second_completed, "post-restart execution did not complete")
+assert(enter_mapping ~= nil, "normal-mode Enter send mapping is missing")
+assert(type(enter_mapping.callback) == "function", "normal-mode Enter mapping must call the send action")
+enter_mapping.callback()
+local third_execution_id = wait_for_completed_turn(enter_text, excluded)
+excluded[third_execution_id] = true
+assert(third_execution_id ~= second_execution_id, "normal Enter send reused the previous execution id")
+assert_compose_cleared(compose_buffer)
+assert_transcript(third_execution_id)
 
-transcript.refresh()
-local second_assistant_id =
-  "session:" .. session_id .. ":execution:" .. second_result.execution_id .. ":assistant"
-local second_node = assert(
-  transcript.projection().nodes[second_assistant_id],
-  "post-restart prompt did not create an assistant transcript node"
-)
-assert(second_node.text == expected, "post-restart transcript changed the deterministic response")
-assert(second_node.final == true, "post-restart assistant node was not finalized")
+for _, mapping in ipairs(vim.api.nvim_buf_get_keymap(compose_buffer, "i")) do
+  assert(mapping.lhs ~= "<CR>", "insert-mode Enter must remain available for newlines")
+end
 
 frontend.disconnect()
-print("phenix-ai.nvim deterministic model pipeline and restart passed")
+print("phenix-ai.nvim command, write, normal Enter, model pipeline and restart passed")
