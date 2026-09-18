@@ -89,6 +89,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
           source = pkgs.lib.cleanSource ./.;
           phenixAcp = phenix-ai.packages.${system}.phenix-acp;
+          phenixAcpFixture = phenix-ai.packages.${system}.phenix-acp-fixture;
           plugin = self.packages.${system}.phenix-ai-nvim;
         in
         {
@@ -98,6 +99,7 @@
                 nativeBuildInputs = [
                   pkgs.neovim
                   phenixAcp
+                  phenixAcpFixture
                 ];
               }
               ''
@@ -143,6 +145,13 @@
                 nvim --headless -u NONE \
                   --cmd ${pkgs.lib.escapeShellArg "set rtp^=${plugin}"} \
                   -c ${pkgs.lib.escapeShellArg "lua dofile('${source}/tests/runtime_selection_auth.lua')"} \
+                  -c qa
+
+                export PHENIX_STATE_DB="$TMPDIR/phenix-ai-nvim-fixture.sqlite"
+                export PHENIX_FIXTURE_ACP="${phenixAcpFixture}/bin/phenix-acp-fixture"
+                nvim --headless -u NONE \
+                  --cmd ${pkgs.lib.escapeShellArg "set rtp^=${plugin}"} \
+                  -c ${pkgs.lib.escapeShellArg "lua dofile('${source}/tests/runtime_model_e2e.lua')"} \
                   -c qa
 
                 touch "$out"
