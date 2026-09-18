@@ -80,6 +80,29 @@ end, 10), "routing selection refresh timed out")
 assert(refresh_error == nil, vim.inspect(refresh_error))
 assert(refreshed.selected == model.id, "session routing selection was not persisted")
 
+local prompt_result = nil
+local prompt_error = nil
+local prompt_complete = false
+runtime.prompt(runtime.active_session(), {
+  { kind = "text", text = "Packaged runtime execution boundary probe." },
+}, function(result, err)
+  prompt_result = result
+  prompt_error = err
+  prompt_complete = true
+end)
+assert(vim.wait(10000, function()
+  return prompt_complete
+end, 10), "packaged prompt execution timed out")
+local prompt_failure = vim.inspect(prompt_error)
+assert(
+  not prompt_failure:find("causal plugin re%-entry", 1, false),
+  "packaged prompt re-entered its execution plugin: " .. prompt_failure
+)
+assert(
+  prompt_result ~= nil or prompt_error ~= nil,
+  "packaged prompt completed without a result or error"
+)
+
 local methods = nil
 local methods_error = nil
 runtime.list_authentication_methods(function(result, err)
