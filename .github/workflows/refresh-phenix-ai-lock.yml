@@ -1,0 +1,33 @@
+name: Refresh merged Phenix AI lock
+
+on:
+  push:
+    branches:
+      - feat/auth-model-routing
+    paths:
+      - .github/workflows/refresh-phenix-ai-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/auth-model-routing
+      - uses: cachix/install-nix-action@v31
+      - name: Refresh core pin
+        run: |
+          set -euo pipefail
+          nix flake lock --update-input phenix-ai
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add flake.lock
+          if git diff --cached --quiet; then
+            echo "phenix-ai lock is already current"
+            exit 0
+          fi
+          git commit -m "chore: pin merged phenix-ai runtime"
+          git push origin HEAD:feat/auth-model-routing
