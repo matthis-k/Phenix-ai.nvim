@@ -31,8 +31,7 @@ M.new_session = actions.new_session
 M.close_session = actions.close_session
 M.choose_session = actions.choose_session
 M.authenticate = actions.authenticate
-M.choose_model = actions.choose_model
-M.choose_routing_profile = actions.choose_routing_profile
+M.choose_selection = actions.choose_selection
 M.attach_image = actions.attach_image
 
 return M
