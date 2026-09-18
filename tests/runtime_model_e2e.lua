@@ -147,4 +147,56 @@ local rendered = table.concat(vim.api.nvim_buf_get_lines(buffer, 0, -1, false), 
 assert(rendered:find(expected, 1, true) ~= nil, "rendered transcript does not contain the deterministic assistant response")
 
 frontend.disconnect()
-print("phenix-ai.nvim deterministic model pipeline passed")
+
+local reconnected = false
+local reconnect_error = nil
+frontend.connect(function(_, err)
+  reconnect_error = err
+  reconnected = true
+end)
+assert(vim.wait(10000, function()
+  return reconnected
+end, 10), "deterministic fixture reconnect timed out")
+assert(reconnect_error == nil, vim.inspect(reconnect_error))
+
+local resumed = false
+local resume_error = nil
+runtime.resume_session(session_id, function(snapshot, err)
+  resume_error = err
+  resumed = snapshot ~= nil
+end)
+assert(vim.wait(10000, function()
+  return resumed or resume_error ~= nil
+end, 10), "deterministic fixture session resume timed out")
+assert(resume_error == nil, vim.inspect(resume_error))
+assert(runtime.active_session() == session_id, "deterministic restart resumed the wrong session")
+
+local recovered = assert(runtime.session_state().sessions[session_id], "restart lost the durable session projection")
+local recovered_assistant = false
+for _, entry in ipairs(recovered.updates or {}) do
+  local change = entry.update or {}
+  if normalized_kind(change.kind) == "message"
+      and change.message ~= nil
+      and normalized_kind(change.message.role) == "assistant"
+      and text_content(change.message.content) == expected then
+    recovered_assistant = true
+    break
+  end
+end
+assert(recovered_assistant, "restart lost the deterministic assistant message")
+
+transcript.refresh()
+local recovered_node = assert(
+  transcript.projection().nodes[assistant_id],
+  "restart did not reconstruct the assistant transcript node"
+)
+assert(recovered_node.text == expected, "restart changed the deterministic assistant response")
+assert(recovered_node.final == true, "restart reconstructed the assistant node as unfinished")
+local recovered_rendered = table.concat(vim.api.nvim_buf_get_lines(buffer, 0, -1, false), "\n")
+assert(
+  recovered_rendered:find(expected, 1, true) ~= nil,
+  "restart did not render the recovered deterministic assistant response"
+)
+
+frontend.disconnect()
+print("phenix-ai.nvim deterministic model pipeline and restart passed")
