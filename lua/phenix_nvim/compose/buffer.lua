@@ -107,11 +107,24 @@ function M.ensure(document)
     return buffer
   end
   buffer = vim.api.nvim_create_buf(false, true)
-  vim.bo[buffer].buftype = "nofile"
+  vim.bo[buffer].buftype = "acwrite"
   vim.bo[buffer].bufhidden = "hide"
   vim.bo[buffer].swapfile = false
   vim.bo[buffer].filetype = "markdown"
   vim.api.nvim_buf_set_name(buffer, "phenix://compose")
+  vim.keymap.set("n", "<CR>", function()
+    require("phenix_nvim.actions").send()
+  end, {
+    buffer = buffer,
+    desc = "Send Phenix prompt",
+    silent = true,
+  })
+  vim.api.nvim_create_autocmd("BufWriteCmd", {
+    buffer = buffer,
+    callback = function()
+      require("phenix_nvim.actions").send()
+    end,
+  })
   vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
     buffer = buffer,
     callback = function()
@@ -242,6 +255,7 @@ function M.clear(document)
   vim.api.nvim_buf_set_lines(target, 0, -1, false, { "" })
   vim.api.nvim_buf_clear_namespace(target, namespace, 0, -1)
   model.clear(document)
+  vim.bo[target].modified = false
 end
 
 return M
