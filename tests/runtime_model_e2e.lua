@@ -198,5 +198,55 @@ assert(
   "restart did not render the recovered deterministic assistant response"
 )
 
+local second_result = nil
+local second_error = nil
+runtime.prompt(session_id, {
+  { kind = "text", text = marker .. " after restart" },
+}, function(result, err)
+  second_result = result
+  second_error = err
+end)
+assert(vim.wait(10000, function()
+  return second_result ~= nil or second_error ~= nil
+end, 10), "post-restart deterministic prompt timed out")
+assert(second_error == nil, vim.inspect(second_error))
+assert(
+  second_result.execution_id ~= prompt_result.execution_id,
+  "post-restart prompt reused the previous durable execution id"
+)
+
+local post_restart_projection = assert(
+  runtime.session_state().sessions[session_id],
+  "post-restart prompt lost the session projection"
+)
+local second_delta = false
+local second_completed = false
+for _, entry in ipairs(post_restart_projection.updates or {}) do
+  local change = entry.update or {}
+  if normalized_kind(change.kind) == "textdelta"
+      and change.execution_id == second_result.execution_id
+      and change.text == expected then
+    second_delta = true
+  elseif normalized_kind(change.kind) == "execution"
+      and change.execution_id == second_result.execution_id
+      and change.update ~= nil
+      and normalized_kind(change.update.kind) == "state"
+      and normalized_kind(change.update.state) == "completed" then
+    second_completed = true
+  end
+end
+assert(second_delta, "post-restart model output did not reach the durable transcript")
+assert(second_completed, "post-restart execution did not complete")
+
+transcript.refresh()
+local second_assistant_id =
+  "session:" .. session_id .. ":execution:" .. second_result.execution_id .. ":assistant"
+local second_node = assert(
+  transcript.projection().nodes[second_assistant_id],
+  "post-restart prompt did not create an assistant transcript node"
+)
+assert(second_node.text == expected, "post-restart transcript changed the deterministic response")
+assert(second_node.final == true, "post-restart assistant node was not finalized")
+
 frontend.disconnect()
 print("phenix-ai.nvim deterministic model pipeline and restart passed")
