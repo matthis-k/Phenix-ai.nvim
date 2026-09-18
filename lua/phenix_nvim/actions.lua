@@ -136,58 +136,164 @@ function M.choose_session()
   sessions.choose()
 end
 
+local function presentation_kind(item)
+  local presentation = item and item.presentation
+  if type(presentation) == "table" then
+    return string.lower(tostring(presentation.kind or ""))
+  end
+  return string.lower(tostring(presentation or ""))
+end
+
 local function choice_label(item, selected)
   local name = item.name or item.id or "unknown"
   local id = item.id
   local marker = id ~= nil and id == selected and "✓ " or "  "
-  if id ~= nil and id ~= name then
-    return marker .. name .. "  ·  " .. id
+  local kind = presentation_kind(item)
+  local glyph = kind == "router" and "󰒍" or "󰧑"
+  local tag = kind == "router" and "router" or "model"
+  local label = marker .. glyph .. " [" .. tag .. "] " .. name
+  if item.description ~= nil and item.description ~= "" then
+    label = label .. "  ·  " .. item.description
   end
-  return marker .. name
+  if kind == "router" and id ~= nil and id ~= name then
+    label = label .. "  ·  " .. id
+  end
+  return label
 end
 
-function M.choose_model()
-  runtime.list_models(function(result, error)
+local function open_external_auth(result)
+  local uri = result and result.uri
+  if type(uri) ~= "string" or uri == "" then
+    return false
+  end
+  if result.instructions ~= nil and result.instructions ~= "" then
+    util.notify(result.instructions, vim.log.levels.INFO)
+  end
+  if type(vim.ui.open) == "function" then
+    local call_ok, handle, open_error = pcall(vim.ui.open, uri)
+    if call_ok and open_error == nil then
+      return true
+    end
+    local failure = call_ok and open_error or handle
+    if failure ~= nil then
+      util.notify(tostring(failure), vim.log.levels.WARN)
+    end
+  end
+  util.notify("Open this URL to finish Phenix authentication: " .. uri, vim.log.levels.INFO)
+  return true
+end
+
+local auth_generation = 0
+local AUTH_POLL_INTERVAL_MS = 1000
+local AUTH_POLL_ATTEMPTS = 600
+
+local function authentication_kind(result)
+  return result and string.lower(tostring(result.kind or "")) or ""
+end
+
+local function poll_authentication(method_id, generation, attempt)
+  if generation ~= auth_generation then
+    return
+  end
+  runtime.authenticate(method_id, function(result, error)
+    if generation ~= auth_generation then
+      return
+    end
     if error ~= nil then
       util.notify(vim.inspect(error), vim.log.levels.ERROR)
       return
     end
-    local available = result and result.available or {}
-    if #available == 0 then
-      util.notify("No models are available for this session", vim.log.levels.WARN)
+    local kind = authentication_kind(result)
+    if kind == "authenticated" then
+      util.notify("Phenix authentication completed", vim.log.levels.INFO)
       return
     end
-    vim.ui.select(available, {
-      prompt = "Phenix model",
-      format_item = function(item)
-        return choice_label(item, result.selected)
+    if kind ~= "external" then
+      util.notify("Phenix returned an unknown authentication state", vim.log.levels.ERROR)
+      return
+    end
+    if attempt >= AUTH_POLL_ATTEMPTS then
+      util.notify("Phenix authentication timed out", vim.log.levels.ERROR)
+      return
+    end
+    vim.defer_fn(function()
+      poll_authentication(method_id, generation, attempt + 1)
+    end, AUTH_POLL_INTERVAL_MS)
+  end)
+end
+
+function M.authenticate()
+  if type(runtime.list_authentication_methods) ~= "function" or type(runtime.authenticate) ~= "function" then
+    util.notify("The installed Phenix runtime does not expose application authentication yet", vim.log.levels.WARN)
+    return
+  end
+  runtime.list_authentication_methods(function(result, error)
+    if error ~= nil then
+      util.notify(vim.inspect(error), vim.log.levels.ERROR)
+      return
+    end
+    local methods = result and result.methods or {}
+    if #methods == 0 then
+      util.notify("No Phenix authentication methods are available", vim.log.levels.WARN)
+      return
+    end
+    vim.ui.select(methods, {
+      prompt = "Phenix authentication",
+      format_item = function(method)
+        local label = method.name or method.id or "unknown"
+        if method.description ~= nil and method.description ~= "" then
+          return label .. "  ·  " .. method.description
+        end
+        return label
       end,
-    }, function(item)
-      if item == nil then
+    }, function(method)
+      if method == nil then
         return
       end
-      runtime.select_model(item.id, function(_, select_error)
-        if select_error ~= nil then
-          util.notify(vim.inspect(select_error), vim.log.levels.ERROR)
+      auth_generation = auth_generation + 1
+      local generation = auth_generation
+      runtime.authenticate(method.id, function(auth_result, auth_error)
+        if generation ~= auth_generation then
+          return
         end
+        if auth_error ~= nil then
+          util.notify(vim.inspect(auth_error), vim.log.levels.ERROR)
+          return
+        end
+        local kind = authentication_kind(auth_result)
+        if kind == "authenticated" then
+          util.notify("Phenix authentication completed", vim.log.levels.INFO)
+          return
+        end
+        if kind ~= "external" then
+          util.notify("Phenix returned an unknown authentication state", vim.log.levels.ERROR)
+          return
+        end
+        if not open_external_auth(auth_result) then
+          util.notify("Phenix authentication did not provide a valid authorization URL", vim.log.levels.ERROR)
+          return
+        end
+        vim.defer_fn(function()
+          poll_authentication(method.id, generation, 1)
+        end, AUTH_POLL_INTERVAL_MS)
       end)
     end)
   end)
 end
 
-function M.choose_routing_profile()
-  runtime.list_routing_profiles(function(result, error)
+function M.choose_selection()
+  runtime.list_selections(function(result, error)
     if error ~= nil then
       util.notify(vim.inspect(error), vim.log.levels.ERROR)
       return
     end
     local available = result and result.available or {}
     if #available == 0 then
-      util.notify("No routing profiles are available for this session", vim.log.levels.WARN)
+      util.notify("No Phenix routing selections are available for this session", vim.log.levels.WARN)
       return
     end
     vim.ui.select(available, {
-      prompt = "Phenix routing profile",
+      prompt = "Phenix model / routing",
       format_item = function(item)
         return choice_label(item, result.selected)
       end,
@@ -195,7 +301,7 @@ function M.choose_routing_profile()
       if item == nil then
         return
       end
-      runtime.select_routing_profile(item.id, function(_, select_error)
+      runtime.select(item.id, function(_, select_error)
         if select_error ~= nil then
           util.notify(vim.inspect(select_error), vim.log.levels.ERROR)
         end

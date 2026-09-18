@@ -99,14 +99,8 @@ local function refresh_active_context()
     emit("status", M.status())
   end
   local features = state.client and state.client:features() or {}
-  if features.models then
-    local ok, request = pcall(session.models, session)
-    if ok then
-      M.track(request, ignore_stale)
-    end
-  end
-  if features.routing then
-    local ok, request = pcall(session.routing_profiles, session)
+  if features.selection then
+    local ok, request = pcall(session.selections, session)
     if ok then
       M.track(request, ignore_stale)
     end
@@ -463,20 +457,43 @@ local function active_session_request(method, callback, ...)
   end)
 end
 
-function M.list_models(callback)
-  active_session_request("models", callback)
+local function client_request(method, callback, ...)
+  if not require_ready(callback) then
+    return
+  end
+  local callable = state.client[method]
+  if type(callable) ~= "function" then
+    util.safe_call(callback, nil, { message = "Phenix client does not support " .. method })
+    return
+  end
+  local ok, request = pcall(callable, state.client, ...)
+  if not ok then
+    util.safe_call(callback, nil, { message = tostring(request) })
+    return
+  end
+  M.track(request, function(result, error)
+    if error == nil then
+      refresh_active_context()
+      emit("status", M.status())
+    end
+    util.safe_call(callback, result, error)
+  end)
 end
 
-function M.select_model(model_id, callback)
-  active_session_request("select_model", callback, model_id)
+function M.list_authentication_methods(callback)
+  client_request("authentication_methods", callback)
 end
 
-function M.list_routing_profiles(callback)
-  active_session_request("routing_profiles", callback)
+function M.authenticate(method_id, callback)
+  client_request("authenticate", callback, method_id)
 end
 
-function M.select_routing_profile(profile_id, callback)
-  active_session_request("select_routing_profile", callback, profile_id)
+function M.list_selections(callback)
+  active_session_request("selections", callback)
+end
+
+function M.select(selection_id, callback)
+  active_session_request("select", callback, selection_id)
 end
 
 function M.cancel_active()
