@@ -99,14 +99,8 @@ local function refresh_active_context()
     emit("status", M.status())
   end
   local features = state.client and state.client:features() or {}
-  if features.models then
-    local ok, request = pcall(session.models, session)
-    if ok then
-      M.track(request, ignore_stale)
-    end
-  end
-  if features.routing then
-    local ok, request = pcall(session.routing_profiles, session)
+  if features.selection or features.routing then
+    local ok, request = pcall(session.selections, session)
     if ok then
       M.track(request, ignore_stale)
     end
@@ -494,20 +488,12 @@ function M.authenticate(method_id, callback)
   client_request("authenticate", callback, method_id)
 end
 
-function M.list_models(callback)
-  active_session_request("models", callback)
+function M.list_selections(callback)
+  active_session_request("selections", callback)
 end
 
-function M.select_model(model_id, callback)
-  active_session_request("select_model", callback, model_id)
-end
-
-function M.list_routing_profiles(callback)
-  active_session_request("routing_profiles", callback)
-end
-
-function M.select_routing_profile(profile_id, callback)
-  active_session_request("select_routing_profile", callback, profile_id)
+function M.select(selection_id, callback)
+  active_session_request("select", callback, selection_id)
 end
 
 function M.cancel_active()
