@@ -140,6 +140,11 @@
                   -c ${pkgs.lib.escapeShellArg ''lua local frontend = require("phenix_nvim"); local runtime = require("phenix_nvim.runtime"); frontend.setup({ auto_connect = false }); local connected = false; local connection_error = nil; frontend.connect(function(_, err) connection_error = err; connected = true end); assert(vim.wait(10000, function() return connected end, 10), "packaged phenix-acp reconnect timed out"); assert(connection_error == nil, vim.inspect(connection_error)); local id = assert(vim.fn.readfile(vim.env.PHENIX_SESSION_ID_FILE)[1]); local resumed = false; local resume_error = nil; runtime.resume_session(id, function(snapshot, err) resume_error = err; resumed = snapshot ~= nil end); assert(vim.wait(10000, function() return resumed or resume_error ~= nil end, 10), "packaged session resume timed out"); assert(resume_error == nil, vim.inspect(resume_error)); assert(runtime.active_session() == id, "restart resumed the wrong session"); local projected = assert(runtime.session_state(), "restart must publish session state"); assert(projected.sessions[id] ~= nil, "resumed session must be reconstructed from durable runtime state"); frontend.disconnect()''} \
                   -c qa
 
+                nvim --headless -u NONE \
+                  --cmd ${pkgs.lib.escapeShellArg "set rtp^=${plugin}"} \
+                  -c ${pkgs.lib.escapeShellArg "lua dofile('${source}/tests/runtime_selection_auth.lua')"} \
+                  -c qa
+
                 touch "$out"
               '';
         }
