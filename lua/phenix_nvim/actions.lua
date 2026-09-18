@@ -152,8 +152,11 @@ local function choice_label(item, selected)
   local glyph = kind == "router" and "󰒍" or "󰧑"
   local tag = kind == "router" and "router" or "model"
   local label = marker .. glyph .. " [" .. tag .. "] " .. name
-  if id ~= nil and id ~= name then
-    return label .. "  ·  " .. id
+  if item.description ~= nil and item.description ~= "" then
+    label = label .. "  ·  " .. item.description
+  end
+  if kind == "router" and id ~= nil and id ~= name then
+    label = label .. "  ·  " .. id
   end
   return label
 end
