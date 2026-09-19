@@ -5,14 +5,15 @@ local transcript = require("phenix_nvim.transcript.controller")
 local transcript_buffer = require("phenix_nvim.transcript.buffer")
 
 local command = assert(vim.env.PHENIX_FIXTURE_ACP, "PHENIX_FIXTURE_ACP is required")
-local log_file = assert(vim.env.PHENIX_NVIM_LOG_FILE, "PHENIX_NVIM_LOG_FILE is required")
+local log_directory = assert(vim.env.PHENIX_NVIM_LOG_DIRECTORY, "PHENIX_NVIM_LOG_DIRECTORY is required")
+local log_file = log_directory .. "/phenix.log"
 local marker = "PHENIX_NVIM_E2E_MARKER"
 local expected = "PHENIX_NVIM_E2E_RESPONSE"
 
 frontend.setup({
   auto_connect = false,
   command = command,
-  log_file = log_file,
+  log_directory = log_directory,
   env = {
     PHENIX_STATE_DB = assert(vim.env.PHENIX_STATE_DB, "PHENIX_STATE_DB is required"),
     PHENIX_FIXTURE_EXPECT_INPUT = marker,
@@ -33,7 +34,7 @@ end, 10), "deterministic fixture connection timed out")
 assert(connection_error == nil, vim.inspect(connection_error))
 assert(vim.wait(10000, function()
   return vim.fn.filereadable(log_file) == 1 and vim.fn.getfsize(log_file) > 0
-end, 10), "Neovim-configured Phenix log file was not created")
+end, 10), "Neovim-configured Phenix root log was not created")
 local initial_log = table.concat(vim.fn.readfile(log_file), "\n")
 assert(initial_log:find('"kind":"debug_started"', 1, true) ~= nil, "runtime startup was not logged")
 local initial_log_lines = #vim.fn.readfile(log_file)
