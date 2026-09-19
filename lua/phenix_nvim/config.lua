@@ -4,6 +4,7 @@ local defaults = {
   command = "phenix-acp",
   args = {},
   env = {},
+  log_file = vim.fn.stdpath("state") .. "/phenix/phenix-ai.nvim.jsonl",
   auto_connect = false,
   poll_interval_ms = 25,
   poll_budget = 32,
@@ -21,6 +22,21 @@ end
 
 function M.get()
   return vim.deepcopy(current)
+end
+
+function M.runtime_env(config)
+  local resolved = config or current
+  local environment = vim.deepcopy(resolved.env or {})
+  local log_file = resolved.log_file
+  if log_file ~= false and log_file ~= nil then
+    if type(log_file) ~= "string" or log_file == "" then
+      error("phenix-ai.nvim log_file must be a non-empty path or false")
+    end
+    if environment.PHENIX_LOG == nil and environment.PHENIX_DEBUG_LOG == nil then
+      environment.PHENIX_LOG = "append:" .. log_file
+    end
+  end
+  return environment
 end
 
 return M

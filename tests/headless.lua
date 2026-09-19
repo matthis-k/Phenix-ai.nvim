@@ -2,7 +2,31 @@ local native = require("phenix")
 assert(native.interface_id == "phenix.application@1")
 
 local frontend = require("phenix_nvim")
-frontend.setup({ auto_connect = false })
+local configured = frontend.setup({ auto_connect = false })
+local config = require("phenix_nvim.config")
+assert(
+  configured.log_file == vim.fn.stdpath("state") .. "/phenix/phenix-ai.nvim.jsonl",
+  "default Phenix log file must live under Neovim state"
+)
+local default_env = config.runtime_env(configured)
+assert(
+  default_env.PHENIX_LOG == "append:" .. configured.log_file,
+  "runtime environment must enable append logging by default"
+)
+local explicit_env = config.runtime_env({
+  env = { PHENIX_LOG = "stderr", KEEP = "value" },
+  log_file = "/tmp/ignored.jsonl",
+})
+assert(explicit_env.PHENIX_LOG == "stderr", "explicit PHENIX_LOG must override log_file")
+assert(explicit_env.KEEP == "value", "runtime logging must preserve caller environment")
+local legacy_env = config.runtime_env({
+  env = { PHENIX_DEBUG_LOG = "/tmp/legacy.jsonl" },
+  log_file = "/tmp/ignored.jsonl",
+})
+assert(legacy_env.PHENIX_LOG == nil, "legacy explicit debug log must not be shadowed")
+assert(legacy_env.PHENIX_DEBUG_LOG == "/tmp/legacy.jsonl")
+local disabled_env = config.runtime_env({ env = {}, log_file = false })
+assert(disabled_env.PHENIX_LOG == nil, "log_file=false must disable default sink injection")
 vim.cmd.runtime("plugin/phenix.lua")
 assert(type(frontend.reference) == "function")
 assert(type(frontend.reference_at) == "function")
