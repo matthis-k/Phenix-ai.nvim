@@ -26,7 +26,7 @@ function M.get()
 end
 
 function M.runtime_env(config)
-  local resolved = config or current
+  local resolved = vim.tbl_deep_extend("force", vim.deepcopy(current), config or {})
   local environment = vim.deepcopy(resolved.env or {})
   local log_directory = resolved.log_directory
   if log_directory ~= false and log_directory ~= nil then
