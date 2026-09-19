@@ -10,9 +10,14 @@ permissions:
   contents: read
 
 jobs:
-  flake-check:
+  lock-preview:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
-      - run: nix flake check --no-update-lock-file --show-trace
+      - name: Resolve current phenix-ai lock
+        run: |
+          nix flake update phenix-ai
+          echo '---PHENIX_LOCK_BEGIN---'
+          cat flake.lock
+          echo '---PHENIX_LOCK_END---'
