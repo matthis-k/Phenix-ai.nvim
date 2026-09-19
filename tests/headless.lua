@@ -28,6 +28,11 @@ assert(legacy_env.PHENIX_LOG == nil, "legacy explicit debug log must not be shad
 assert(legacy_env.PHENIX_DEBUG_LOG == "/tmp/legacy.jsonl")
 local disabled_env = config.runtime_env({ env = {}, log_file = false })
 assert(disabled_env.PHENIX_LOG == nil, "log_file=false must disable default sink injection")
+local inherited_log = vim.env.PHENIX_LOG
+vim.env.PHENIX_LOG = "stdout"
+local inherited_env = config.runtime_env({ env = {}, log_file = "/tmp/ignored.jsonl" })
+assert(inherited_env.PHENIX_LOG == nil, "inherited PHENIX_LOG must not be shadowed")
+vim.env.PHENIX_LOG = inherited_log
 vim.cmd.runtime("plugin/phenix.lua")
 assert(type(frontend.reference) == "function")
 assert(type(frontend.reference_at) == "function")
