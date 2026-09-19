@@ -2,8 +2,9 @@ local native = require("phenix")
 assert(native.interface_id == "phenix.application@1")
 
 local frontend = require("phenix_nvim")
-local configured = frontend.setup({ auto_connect = false })
+frontend.setup({ auto_connect = false })
 local config = require("phenix_nvim.config")
+local configured = config.get()
 assert(
   configured.log_file == vim.fn.stdpath("state") .. "/phenix/phenix-ai.nvim.jsonl",
   "default Phenix log file must live under Neovim state"
