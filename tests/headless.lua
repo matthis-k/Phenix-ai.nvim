@@ -14,11 +14,14 @@ assert(
   default_env.PHENIX_LOG == "append:" .. configured.log_file,
   "runtime environment must enable append logging by default"
 )
+assert(configured.log_depth == "reference", "default log depth must be reference")
+assert(default_env.PHENIX_LOG_DEPTH == "reference", "runtime must default to reference-depth logging")
 local explicit_env = config.runtime_env({
   env = { PHENIX_LOG = "stderr", KEEP = "value" },
   log_file = "/tmp/ignored.jsonl",
 })
 assert(explicit_env.PHENIX_LOG == "stderr", "explicit PHENIX_LOG must override log_file")
+assert(explicit_env.PHENIX_LOG_DEPTH == "reference", "default reference depth must remain explicit")
 assert(explicit_env.KEEP == "value", "runtime logging must preserve caller environment")
 local legacy_env = config.runtime_env({
   env = { PHENIX_DEBUG_LOG = "/tmp/legacy.jsonl" },
@@ -33,6 +36,19 @@ vim.env.PHENIX_LOG = "stdout"
 local inherited_env = config.runtime_env({ env = {}, log_file = "/tmp/ignored.jsonl" })
 assert(inherited_env.PHENIX_LOG == nil, "inherited PHENIX_LOG must not be shadowed")
 vim.env.PHENIX_LOG = inherited_log
+local explicit_depth = config.runtime_env({
+  env = { PHENIX_LOG_DEPTH = "summary" },
+  log_file = "/tmp/phenix.jsonl",
+  log_depth = "reference",
+})
+assert(explicit_depth.PHENIX_LOG_DEPTH == "summary", "explicit PHENIX_LOG_DEPTH must win")
+local disabled_depth = config.runtime_env({ env = {}, log_file = "/tmp/phenix.jsonl", log_depth = false })
+assert(disabled_depth.PHENIX_LOG_DEPTH == nil, "log_depth=false must disable default depth injection")
+local inherited_depth = vim.env.PHENIX_LOG_DEPTH
+vim.env.PHENIX_LOG_DEPTH = "inline"
+local inherited_depth_env = config.runtime_env({ env = {}, log_file = "/tmp/phenix.jsonl", log_depth = "reference" })
+assert(inherited_depth_env.PHENIX_LOG_DEPTH == nil, "inherited PHENIX_LOG_DEPTH must not be shadowed")
+vim.env.PHENIX_LOG_DEPTH = inherited_depth
 vim.cmd.runtime("plugin/phenix.lua")
 assert(type(frontend.reference) == "function")
 assert(type(frontend.reference_at) == "function")
