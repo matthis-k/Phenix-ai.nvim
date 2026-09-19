@@ -5,6 +5,7 @@ local defaults = {
   args = {},
   env = {},
   log_file = vim.fn.stdpath("state") .. "/phenix/phenix-ai.nvim.jsonl",
+  log_depth = "reference",
   auto_connect = false,
   poll_interval_ms = 25,
   poll_budget = 32,
@@ -38,6 +39,17 @@ function M.runtime_env(config)
       or vim.env.PHENIX_DEBUG_LOG ~= nil
     if not explicit_log then
       environment.PHENIX_LOG = "append:" .. log_file
+    end
+  end
+
+  local log_depth = resolved.log_depth
+  if log_depth ~= false and log_depth ~= nil then
+    if log_depth ~= "summary" and log_depth ~= "reference" and log_depth ~= "inline" then
+      error("phenix-ai.nvim log_depth must be summary, reference, inline, or false")
+    end
+    local explicit_depth = environment.PHENIX_LOG_DEPTH ~= nil or vim.env.PHENIX_LOG_DEPTH ~= nil
+    if not explicit_depth then
+      environment.PHENIX_LOG_DEPTH = log_depth
     end
   end
   return environment
