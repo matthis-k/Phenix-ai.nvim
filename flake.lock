@@ -134,11 +134,11 @@
         "phenix-stitch": "phenix-stitch"
       },
       "locked": {
-        "lastModified": 1789750770,
-        "narHash": "sha256-KOHoJ6DCSnm7SLXVBtTQb4w/xNzCjphvLmlrOnLSS24=",
+        "lastModified": 1789784619,
+        "narHash": "sha256-zTKn4g6MzCUHWUndMa0+KDPwRrA82ELKozX9lk6b0/U=",
         "owner": "matthis-k",
         "repo": "phenix-ai",
-        "rev": "1d3908bce9716c58084433638d9bd1985886cbde",
+        "rev": "3733d2ff202448466a79de6d8217191e7aae8de9",
         "type": "github"
       },
       "original": {
