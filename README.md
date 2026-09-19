@@ -16,14 +16,23 @@ The flake follows `github:matthis-k/phenix-ai`, and `flake.lock` pins the exact 
 
 ## Logging
 
-The client launches Phenix with structured JSONL logging enabled by default at
-`stdpath("state") .. "/phenix/phenix-ai.nvim.jsonl"`. File logging uses append
-semantics, so reconnects and subsequent Neovim sessions retain earlier records.
+The client gives Phenix one log directory by default:
 
-Set `log_file = false` to disable the client-provided sink, or set
-`env.PHENIX_LOG` explicitly to use a core sink such as `stderr`, `stdout`,
-`append:/path/to/file.jsonl`, or `truncate:/path/to/file.jsonl`. An explicit
-legacy `PHENIX_DEBUG_LOG` is also preserved.
+```text
+stdpath("state")/phenix/
+├── phenix.log
+└── objects/
+    └── sha256/...
+```
+
+`phenix.log` is the append-only chronological root. The client defaults to
+reference-depth logging, so detailed records are stored in the shared immutable
+object tree and referenced from the root log. Referenced objects may contain
+further references.
+
+Set `log_directory = false` to disable the client-provided sink, or set
+`env.PHENIX_LOG` explicitly to select another core sink. An explicit legacy
+`PHENIX_DEBUG_LOG` is also preserved.
 
 ## Non-Nix installs
 
